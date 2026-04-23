@@ -1,13 +1,10 @@
 """
-Pool construction video — Veo 3.1 via OpenRouter.
+Pool construction video — Kling O1 via OpenRouter (~$0.90/run).
 
 Input:  the pool-edited oblique render (Nano Banana output).
-Output: cinematic 8-second drone push-in toward the pool.
+Output: 10-second locked aerial shot showing pool appearing in backyard.
 
-Key gotcha from spec:
-  - Payload uses `input_references`, NOT `image`/`last_image`
-  - Download MUST use GET /api/v1/videos/{id}/content WITH auth header
-    (unsigned_urls[0] returns 401 for Veo)
+first_frame = satellite (before), last_frame = pool render (after).
 """
 
 import asyncio
@@ -21,30 +18,35 @@ from PIL import Image
 
 
 OPENROUTER_VIDEO_URL = "https://openrouter.ai/api/v1/videos"
-VIDEO_MODEL          = "google/veo-3.1"
+VIDEO_MODEL          = "kwaivgi/kling-video-o1"
 
 VIDEO_PROMPT = (
-    "Cinematic real-estate drone shot of the EXACT property shown in the reference image. "
-    "The house architecture, roof, walls, windows, trees, driveway, fences, neighbors, "
-    "and pool shape/position MUST remain faithful to the input image — do not invent a "
-    "different house, do not restyle, do not move the pool. "
-    "Camera move: starts as a high-angle drone shot matching the reference image (~55° "
-    "looking down). Smoothly pushes in and gently descends toward the backyard, ending "
-    "closer to the pool with the back of the house as the backdrop behind the pool. "
-    "Single continuous shot — no cuts, no orbit around the house, no whip pans. "
-    "The pool stays in the backyard for the entire shot. "
-    "Atmosphere: warm golden-hour lighting, sparkling blue pool water with gentle ripples "
-    "and light caustics, subtle breeze in the trees. "
-    "High-end real-estate listing style. Photorealistic."
+    "Locked-off aerial drone shot of a residential backyard. Zero camera movement: "
+    "no pan, no tilt, no zoom, no rotation throughout the entire clip. "
+    "The only change in the scene is the gradual appearance of a swimming pool in the "
+    "backyard lawn. The transformation is smooth and continuous: the grass in the pool "
+    "area transitions, then smoothly fills with crystal-clear turquoise water. "
+    "Concrete coping and deck appear around the pool edges as the water fills. "
+    "The final second shows calm water with subtle sun reflections and a small white "
+    "pool float resting on the surface. "
+    "Everything else stays pixel-perfect still: the house, roof, driveway, trees, "
+    "hedges, fence, neighboring properties, lighting, and shadows do not move. "
+    "Photorealistic aerial photography, midday overhead lighting, soft natural shadows."
+)
+
+NEGATIVE_PROMPT = (
+    "workers, people, humans, machinery, excavators, construction vehicles, dust, "
+    "debris, tools, hoses, camera movement, zoom, pan, tilt, rotation, "
+    "weather changes, rain, fog, lens flare, color shift, moving shadows"
 )
 
 
-def _to_b64(path: str) -> str:
+def _to_b64(path: str) -> tuple[str, str]:
     img = Image.open(path).convert("RGB")
     img = img.resize((1280, 720), Image.LANCZOS)
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=95)
-    return base64.b64encode(buf.getvalue()).decode()
+    return base64.b64encode(buf.getvalue()).decode(), "image/jpeg"
 
 
 class VideoPipeline:
@@ -59,66 +61,67 @@ class VideoPipeline:
 
     async def generate_pool_video(
         self,
-        satellite_path: str,   # unused in this impl — kept for interface compat
-        render_path: str,      # the pool-edited oblique image
+        satellite_path: str,
+        render_path: str,
         placement: dict,
         output_path: str,
         job_dir: str,
     ) -> str:
         """
-        Generate 8s cinematic video from the pool render.
+        Generate 10s pool appearance video using Kling O1 (first + last frame).
         Raises RuntimeError on any failure — no silent fallback.
         """
-        b64         = _to_b64(render_path)
-        render_hint = placement.get("render_prompt", "")
+        start_b64, start_mime = _to_b64(satellite_path)
+        end_b64,   end_mime   = _to_b64(render_path)
 
         payload = {
-            "model":  VIDEO_MODEL,
-            "prompt": VIDEO_PROMPT + (" " + render_hint if render_hint else ""),
-            "input_references": [
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
-            ],
-            "aspect_ratio": "16:9",
-            "duration":     8,
-            "resolution":   "720p",
+            "model":           VIDEO_MODEL,
+            "prompt":          VIDEO_PROMPT,
+            "negative_prompt": NEGATIVE_PROMPT,
+            "duration":        10,
+            "aspect_ratio":    "16:9",
+            "first_frame":     f"data:{start_mime};base64,{start_b64}",
+            "last_frame":      f"data:{end_mime};base64,{end_b64}",
         }
 
-        print("  [Veo 3.1] submitting job...")
+        print("  [Kling O1] submitting job...")
         r = requests.post(OPENROUTER_VIDEO_URL, headers=self.headers, json=payload, timeout=60)
         if r.status_code == 402:
             raise RuntimeError("OpenRouter 402: out of credits — add funds at openrouter.ai/credits")
         if r.status_code != 200:
-            raise RuntimeError(f"Veo submit failed {r.status_code}: {r.text[:500]}")
+            raise RuntimeError(f"Kling submit failed {r.status_code}: {r.text[:500]}")
 
         data        = r.json()
         job_id      = data.get("id")
         polling_url = data.get("polling_url") or f"{OPENROUTER_VIDEO_URL}/{job_id}"
         if not job_id:
-            raise RuntimeError(f"Veo response missing id: {data}")
-        print(f"  [Veo 3.1] job {job_id} submitted — polling...")
+            raise RuntimeError(f"Kling response missing id: {data}")
+        print(f"  [Kling O1] job {job_id} submitted — polling...")
 
-        deadline = time.time() + 600  # 10 min
+        deadline = time.time() + 660  # 11 min
         while time.time() < deadline:
             await asyncio.sleep(10)
             poll   = requests.get(polling_url, headers=self.headers, timeout=30)
             sd     = poll.json()
             status = sd.get("status", "unknown")
-            print(f"  [Veo 3.1] {status}")
+            print(f"  [Kling O1] {status}")
 
             if status == "completed":
-                # Spec: use authenticated /content endpoint, NOT unsigned_urls (401)
-                content_url = f"{OPENROUTER_VIDEO_URL}/{job_id}/content"
-                video_r     = requests.get(content_url, headers=self.headers, timeout=180)
+                urls      = sd.get("unsigned_urls") or []
+                video_url = (urls[0] if urls else None) or sd.get("video_url")
+                if not video_url:
+                    raise RuntimeError(f"Kling completed but no video URL: {sd}")
+                video_r = requests.get(video_url, headers=self.headers, timeout=180)
                 if video_r.status_code != 200 or len(video_r.content) < 10_000:
                     raise RuntimeError(
                         f"Video download failed: status={video_r.status_code}, "
                         f"size={len(video_r.content)}"
                     )
                 Path(output_path).write_bytes(video_r.content)
-                print(f"  [Veo 3.1] saved {len(video_r.content):,} bytes → {output_path}")
+                print(f"  [Kling O1] saved {len(video_r.content):,} bytes → {output_path}")
                 return output_path
 
             if status == "failed":
-                raise RuntimeError(f"Veo job failed: {sd.get('error', sd)}")
+                raise RuntimeError(f"Kling failed: {sd.get('error', sd)}")
 
-        raise RuntimeError(f"Veo 3.1 timed out after 10 minutes (job_id={job_id})")
+        raise RuntimeError(f"Kling O1 timed out after 11 minutes (job_id={job_id})")
