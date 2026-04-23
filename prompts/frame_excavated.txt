@@ -1,0 +1,18 @@
+TASK: Edit the PRIMARY IMAGE above to show the pool area mid-excavation — dirt exposed, hole dug, NO water yet.
+
+STRICT RULES — follow ALL exactly:
+1. DO NOT change the satellite perspective or viewing angle — keep the exact top-down aerial view.
+2. DO NOT change, move, or remove ANY existing element: the house, roof, walls, windows, driveway, trees, hedges, fence, garden, neighboring houses, streets, or any structure OUTSIDE the pool zone.
+3. ONLY modify the specific pool placement area: {placement}
+4. The excavation must look like a real in-progress pool dig from aerial view:
+   - Rectangular or oval hole in the ground, roughly {yard_size}-yard proportional size
+   - Exposed reddish-brown dirt/soil walls around the hole
+   - Small piles of displaced soil visible at the edges
+   - The excavation floor is flat, darker brown earth
+   - A faint chalk/string outline marks the pool boundary
+   - NO water, NO concrete, NO coping, NO workers, NO machinery visible
+5. Preserve the satellite image quality, lighting, and resolution IDENTICAL everywhere outside the pool area.
+6. Do NOT add any construction equipment, vehicles, workers, or debris beyond small soil piles at pool edges.
+
+The result must look like a real Google Maps satellite snapshot mid-excavation.
+Existing features to preserve (DO NOT touch): {existing}

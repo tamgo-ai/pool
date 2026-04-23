@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+httpx
+anthropic
+python-dotenv
+pillow
+qrcode[pil]
+moviepy
+opencv-python-headless
+aiofiles
+jinja2
+python-multipart
+lob-python
+sqlite3

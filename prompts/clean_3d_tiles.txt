@@ -1,0 +1,24 @@
+TASK: Edit this image to remove Google Photorealistic 3D Tile artifacts while preserving the exact scene, composition, and perspective.
+
+The image is a rendered aerial oblique view (drone-style) of a residential property from Google's 3D tiles. It typically contains visual artifacts that must be cleaned up:
+
+ARTIFACTS TO REMOVE:
+1. Stretched, smeared, or melted textures (especially on roof edges, tree canopies, car surfaces)
+2. Phantom vehicles or half-formed cars (fuzzy blobs that look like cars but aren't fully rendered)
+3. Vegetation that looks like plasticine or "melted ice cream" — replace with crisp, natural tree textures
+4. Any visible UI overlays, watermarks, attribution text, compass indicators, or Cesium/Google logos
+5. Floating or disconnected geometry fragments
+6. Blurry or pixelated zones due to low-resolution source tiles
+
+WHAT TO KEEP EXACTLY:
+- The camera angle and perspective (do NOT change the viewpoint)
+- The house (roof color, shape, windows, doors, walls)
+- The lot boundaries and fences
+- The backyard layout (lawn, existing trees, paths, any structures)
+- Neighboring houses at the edges of the frame
+- Lighting direction and intensity
+- Overall color palette
+
+The result should look like a clean, professional aerial photograph of the same property — as if taken by a real drone with a high-quality camera on a clear day. Do NOT add any new elements (no pool, no furniture, no people, no cars). This is purely a cleanup pass.
+
+Photorealistic, natural, sharp details, midday lighting, no weather effects.

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; }
+    .cesium-widget-credits, .cesium-viewer-bottom, .cesium-viewer-toolbar,
+    .cesium-viewer-geocoderContainer, .cesium-viewer-homeButton,
+    .cesium-viewer-sceneModePicker, .cesium-viewer-navigationHelpButton,
+    .cesium-viewer-animationContainer, .cesium-viewer-timelineContainer,
+    .cesium-viewer-fullscreenContainer { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <script>
+    const params   = new URLSearchParams(window.location.search);
+    const lat      = parseFloat(params.get('lat'));
+    const lng      = parseFloat(params.get('lng'));
+    const heading  = parseFloat(params.get('heading')  || '180');
+    const pitch    = parseFloat(params.get('pitch')    || '-45');
+    const distance = parseFloat(params.get('distance') || '150');
+    const elev     = parseFloat(params.get('elev')     || '50');  // terrain elevation (metres)
+    const apiKey   = params.get('key');
+
+    window.cesiumReady = false;
+    window.cesiumError = null;
+
+    // Surface tile fetch errors in console
+    const _origFetch = window.fetch;
+    window.fetch = function(...args) {
+      return _origFetch(...args).then(r => {
+        if (!r.ok) console.error('fetch ' + r.status + ' ' + (typeof args[0] === 'string' ? args[0].substring(0, 120) : ''));
+        return r;
+      }).catch(e => { console.error('fetch error: ' + e); throw e; });
+    };
+
+    Cesium.Ion.defaultAccessToken = '';
+
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      imageryProvider      : false,
+      baseLayerPicker      : false,
+      geocoder             : false,
+      homeButton           : false,
+      sceneModePicker      : false,
+      navigationHelpButton : false,
+      animation            : false,
+      timeline             : false,
+      fullscreenButton     : false,
+      infoBox              : false,
+      selectionIndicator   : false,
+      requestRenderMode    : false,
+    });
+
+    viewer.scene.globe.show         = false;
+    viewer.scene.skyBox.show        = false;
+    viewer.scene.skyAtmosphere.show = false;
+    viewer.scene.backgroundColor    = Cesium.Color.BLACK;
+
+    // Confirm SwiftShader is active
+    try {
+      const gl = viewer.scene.canvas.getContext('webgl2') || viewer.scene.canvas.getContext('webgl');
+      if (gl) {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        if (ext) {
+          console.log('WebGL renderer: ' + gl.getParameter(ext.UNMASKED_RENDERER_WEBGL));
+        } else {
+          console.log('WebGL renderer: ' + gl.getParameter(gl.RENDERER));
+        }
+      } else {
+        console.error('No WebGL context on canvas!');
+      }
+    } catch(e) { console.error('WebGL info error: ' + e); }
+
+    (async function() {
+      try {
+        console.log('Loading tileset... elev=' + elev + 'm');
+        const tileset = await Cesium.Cesium3DTileset.fromUrl(
+          `https://tile.googleapis.com/v1/3dtiles/root.json?key=${apiKey}`,
+          { maximumScreenSpaceError: 4, showCreditsOnScreen: false }
+        );
+        viewer.scene.primitives.add(tileset);
+        console.log('Tileset added');
+
+        // Target at actual terrain elevation (not sea level) so camera stays above ground
+        const target = Cesium.Cartesian3.fromDegrees(lng, lat, elev + 5);
+        const offset = new Cesium.HeadingPitchRange(
+          Cesium.Math.toRadians(heading),
+          Cesium.Math.toRadians(pitch),
+          distance
+        );
+        viewer.camera.lookAt(target, offset);
+        viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+        console.log('Camera set: heading=' + heading + ' pitch=' + pitch + ' dist=' + distance + ' targetElev=' + (elev+5));
+
+        // Poll until tiles loaded, forcing renders each tick
+        let checks = 0;
+        const check = setInterval(() => {
+          viewer.scene.requestRender();
+          checks++;
+          const loaded = tileset.tilesLoaded;
+          if (checks % 10 === 0) console.log('tiles check ' + checks + ': tilesLoaded=' + loaded);
+          if (loaded) {
+            clearInterval(check);
+            console.log('Tiles loaded! Final render...');
+            viewer.scene.requestRender();
+            setTimeout(() => {
+              viewer.scene.requestRender();
+              window.cesiumReady = true;
+              console.log('cesiumReady = true');
+            }, 2000);
+          }
+        }, 300);
+
+        setTimeout(() => {
+          if (!window.cesiumReady) {
+            console.warn('Hard timeout — forcing cesiumReady');
+            viewer.scene.requestRender();
+            window.cesiumReady = true;
+          }
+        }, 25000);
+
+      } catch (e) {
+        console.error('3D Tiles error: ' + e);
+        window.cesiumError = String(e);
+        window.cesiumReady = true;
+      }
+    })();
+  </script>
+</body>
+</html>
