@@ -111,7 +111,7 @@ class PoolOrchestrator:
 
             # 5 — Claude picks the view showing backyard in foreground
             self.progress("analysis", "Claude selecting best backyard view...")
-            chosen_heading = await self.renderer.select_best_heading(renders, placement, ANTHROPIC_KEY)
+            chosen_heading = self.renderer.select_best_heading(renders, placement)
             chosen_path    = renders.get(chosen_heading) or list(ok_renders.values())[0]
             result["steps"]["chosen_heading"] = chosen_heading
             result["steps"]["chosen_render"]  = chosen_path

@@ -80,25 +80,27 @@ The images are attached in order: heading 0°, 90°, 180°, 270°.
 Respond ONLY in JSON: {{ "chosen_heading": <0|90|180|270>, "reason": "..." }}
 """
 
-# ─── Nano Banana edit prompt (spec verbatim) ─────────────────────────────────
+# ─── Nano Banana edit prompt ─────────────────────────────────────────────────
+# No foreground/background language — it's ambiguous with oblique views.
+# Instead: explicit backyard description + hard rules about what NOT to touch.
 
 EDIT_PROMPT_TEMPLATE = """\
-Add a realistic inground swimming pool to the backyard of the TARGET HOUSE in this oblique aerial photo.
+Add a photorealistic inground swimming pool to the BACKYARD of the target house in this aerial image.
 
-HOW TO IDENTIFY THE CORRECT SPOT:
-- The target house is the one closest to the center of the frame.
-- This photo was taken from a drone hovering OVER THE BACKYARD, looking across the backyard toward the house. Therefore:
-  - The BACKYARD is the grass/lawn area in the FOREGROUND of the image (between the bottom edge of the photo and the target house).
-  - The FRONT of the house (driveway, street, road) is BEHIND the house, in the BACKGROUND — often partially hidden by the house itself.
-- Place the pool ONLY in the foreground grass/lawn area that belongs to the target house. \
-NEVER between the house and any road/driveway visible in the background. NEVER on a neighbor's lot.
+BACKYARD LOCATION: {backyard}
+POOL DETAILS: {render_prompt}
 
-{render_prompt}
+STRICT RULES — follow every one:
+1. The pool goes ONLY in the open grass/lawn area of the BACKYARD described above.
+2. DO NOT place the pool near the driveway, street, front yard, or between the house and any road.
+3. DO NOT modify, move, or remove the house — roof, walls, windows, and footprint must stay IDENTICAL.
+4. DO NOT touch any neighbor's lot.
+5. The pool must look like a real installed pool viewed from above: crystal-clear turquoise water, \
+white concrete coping around the rim, small concrete deck surround (~3 ft wide), proportional to the yard size.
+6. Keep everything else pixel-identical: trees, fences, driveway, neighbors, camera angle, lighting, shadows.
+7. Do NOT add people, furniture, umbrellas, or vehicles.
 
-Keep the rest of the image pixel-identical — same house, roof, windows, trees, driveway, neighbors, \
-fences, camera angle, lighting, and shadows. The pool should be photorealistic: blue water, light stone \
-coping, optional surrounding patio and a few lounge chairs. Match the existing perspective and lighting \
-direction. Do not change framing, zoom, or camera angle.
+The result must look like a real aerial photo of the same property — just with a pool already installed in the backyard.
 """
 
 
@@ -171,45 +173,33 @@ class RendererAgent:
             "house_description": "suburban home",
         }
 
-    async def select_best_heading(
+    def select_best_heading(
         self,
-        renders: dict,           # {0: path, 90: path, 180: path, 270: path}
+        renders: dict,
         analysis: dict,
-        anthropic_key: str,
+        anthropic_key: str = None,
     ) -> int:
-        """Pass 2: 4 renders → Claude Opus → chosen heading (backyard in foreground)."""
-        import anthropic
-        client = anthropic.Anthropic(api_key=anthropic_key)
+        """
+        Pick the cardinal heading whose camera sits IN the backyard.
 
-        content = []
-        for heading in [0, 90, 180, 270]:
-            path = renders.get(heading)
-            if not path:
-                continue
-            b64 = base64.b64encode(Path(path).read_bytes()).decode()
-            content.append({"type": "text", "text": f"Heading {heading}°:"})
-            content.append({"type": "image", "source": {
-                "type": "base64", "media_type": "image/png", "data": b64
-            }})
+        The `backyard_camera_heading` from analysis is the compass direction FROM
+        the house center TOWARD the backyard. That is exactly where we want the
+        camera: heading=180 means camera is south of house, looking north, with
+        the south backyard between camera and house (backyard in foreground).
 
-        prompt = SELECTOR_PROMPT_TEMPLATE.format(
-            backyard=analysis.get("backyard", "rear of property"),
-            front_side=analysis.get("front_side", "street side"),
-        )
-        content.append({"type": "text", "text": prompt})
+        Claude vision tends to confuse this geometry, so we snap mathematically.
+        """
+        estimated = analysis.get("backyard_camera_heading", 180)
+        cardinals  = [0, 90, 180, 270]
+        available  = [h for h in cardinals if renders.get(h)]
 
-        try:
-            resp   = client.messages.create(
-                model="claude-opus-4-7", max_tokens=256,
-                messages=[{"role": "user", "content": content}],
-            )
-            result = _extract_json(resp.content[0].text)
-            chosen = int(result["chosen_heading"])
-            print(f"  [renderer] heading selector → {chosen}° ({result.get('reason','')[:80]})")
-            return chosen
-        except Exception as e:
-            print(f"  [renderer] heading selector failed ({e}), using backyard_camera_heading estimate")
-            return analysis.get("backyard_camera_heading", 180)
+        def angular_dist(a, b):
+            return min(abs(a - b), 360 - abs(a - b))
+
+        candidates = available if available else cardinals
+        chosen     = min(candidates, key=lambda c: angular_dist(c, estimated))
+        print(f"  [renderer] heading: {chosen}° (backyard at {estimated}°, snapped to nearest available cardinal)")
+        return chosen
 
     async def render_pool(
         self,
@@ -218,11 +208,9 @@ class RendererAgent:
         output_path: str,
     ) -> str:
         """Nano Banana Pro: add pool to foreground grass of the chosen oblique render."""
-        render_prompt = analysis.get(
-            "render_prompt",
-            "Add a rectangular inground pool in the center of the backyard.",
-        )
-        prompt = EDIT_PROMPT_TEMPLATE.format(render_prompt=render_prompt)
+        render_prompt = analysis.get("render_prompt", "Add a rectangular inground pool in the center of the backyard.")
+        backyard      = analysis.get("backyard", "rear of property, the grassy area opposite the driveway")
+        prompt        = EDIT_PROMPT_TEMPLATE.format(render_prompt=render_prompt, backyard=backyard)
         b64    = _to_b64(oblique_path, max_size=1024)
 
         payload = {
