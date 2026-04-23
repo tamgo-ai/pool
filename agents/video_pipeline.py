@@ -88,7 +88,7 @@ class VideoPipeline:
         r = requests.post(OPENROUTER_VIDEO_URL, headers=self.headers, json=payload, timeout=60)
         if r.status_code == 402:
             raise RuntimeError("OpenRouter 402: out of credits — add funds at openrouter.ai/credits")
-        if r.status_code != 200:
+        if r.status_code not in (200, 202):
             raise RuntimeError(f"Kling submit failed {r.status_code}: {r.text[:500]}")
 
         data        = r.json()
