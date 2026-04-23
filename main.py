@@ -335,6 +335,12 @@ async def generate(request: Request):
             result = {"status": "error", "error": str(e)}
         jid = job_id_holder["id"]
         job_data[jid] = result
+        # propagate landing_url and finance to top level for the UI
+        if result.get("landing_url"):
+            job_data[jid]["landing_url"] = result["landing_url"]
+        if result.get("steps", {}).get("finance"):
+            job_data[jid]["finance"] = result["steps"]["finance"]
+        job_data[jid]["address"] = address
         # save to DB
         conn = sqlite3.connect(DB_PATH)
         import json
